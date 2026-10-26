@@ -1,0 +1,183 @@
+name: Build OpenWrt / ImmortalWrt for Allwinner H616 (TX9 Pro / X96Q)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      distro:
+        description: 'Firmware Distribution'
+        required: true
+        default: 'ImmortalWrt'
+        type: choice
+        options:
+          - 'ImmortalWrt'
+          - 'OpenWrt'
+          - 'KWRT'
+      branch:
+        description: 'Branch / Release Version'
+        required: true
+        default: 'master (v25 apk)'
+        type: choice
+        options:
+          - 'master (v25 apk)'
+          - 'openwrt-24.10 (v24 opkg)'
+      release:
+        description: 'Publish as GitHub Release'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ inputs.distro }} (${{ inputs.branch }})
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Maximize Build Environment)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/lib/jvm /opt/ghc
+          sudo rm -rf /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune -a -f || true
+          df -h
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang flex bison gawk gettext git libncurses-dev \
+            libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
+            subversion swig time xsltproc libelf-dev qemu-utils dosfstools \
+            libfuse-dev libbz2-dev patch zstd libzstd-dev
+
+      - name: Select Distribution Source & Branch
+        id: setup_source
+        run: |
+          if [ "${{ inputs.distro }}" = "ImmortalWrt" ]; then
+            REPO_URL="https://github.com/immortalwrt/immortalwrt.git"
+            if [[ "${{ inputs.branch }}" == *"24"* ]]; then
+              REPO_BRANCH="openwrt-24.10"
+              PKG_MGR="opkg"
+            else
+              REPO_BRANCH="master"
+              PKG_MGR="apk"
+            fi
+          elif [ "${{ inputs.distro }}" = "OpenWrt" ]; then
+            REPO_URL="https://github.com/openwrt/openwrt.git"
+            if [[ "${{ inputs.branch }}" == *"24"* ]]; then
+              REPO_BRANCH="openwrt-24.10"
+              PKG_MGR="opkg"
+            else
+              REPO_BRANCH="main"
+              PKG_MGR="apk"
+            fi
+          elif [ "${{ inputs.distro }}" = "KWRT" ]; then
+            REPO_URL="https://github.com/coolsnowwolf/lede.git"
+            REPO_BRANCH="master"
+            PKG_MGR="opkg"
+          fi
+
+          echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
+          echo "repo_branch=${REPO_BRANCH}" >> $GITHUB_OUTPUT
+          echo "pkg_mgr=${PKG_MGR}" >> $GITHUB_OUTPUT
+          echo "Using Distro: ${{ inputs.distro }} | URL: ${REPO_URL} | Branch: ${REPO_BRANCH} | Package Manager: ${PKG_MGR}"
+
+      - name: Clone Source Code
+        run: |
+          git clone --depth 1 -b ${{ steps.setup_source.outputs.repo_branch }} ${{ steps.setup_source.outputs.repo_url }} openwrt
+
+      - name: Update & Install Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Apply Hardware Fixes (SV6256P Wi-Fi & AC300 RMII Ethernet)
+        run: |
+          chmod +x scripts/init-build.sh
+          ./scripts/init-build.sh openwrt
+
+      - name: Load Build Configuration
+        run: |
+          cd openwrt
+          cp ../configs/tx9pro_h616.config .config
+          make defconfig
+
+      - name: Download Dependency Sources
+        run: |
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || make -j1 V=s
+          echo "build_status=success" >> $GITHUB_OUTPUT
+
+      - name: Prepare Artifacts & Generate Checksums
+        id: organize
+        if: steps.compile.outputs.build_status == 'success'
+        run: |
+          mkdir -p release_files
+          BIN_DIR="openwrt/bin/targets/sunxi/cortexa53"
+          
+          PREFIX="${{ inputs.distro }}-TX9Pro-H616-${{ steps.setup_source.outputs.pkg_mgr }}"
+          
+          # Copy SD card images
+          if [ -f "${BIN_DIR}"/*-ext4-sdcard.img.gz ]; then
+            cp -vf "${BIN_DIR}"/*-ext4-sdcard.img.gz "release_files/${PREFIX}-ext4-sdcard.img.gz"
+          fi
+          if [ -f "${BIN_DIR}"/*-squashfs-sdcard.img.gz ]; then
+            cp -vf "${BIN_DIR}"/*-squashfs-sdcard.img.gz "release_files/${PREFIX}-squashfs-sdcard.img.gz"
+          fi
+          if [ -f "${BIN_DIR}"/*.manifest ]; then
+            cp -vf "${BIN_DIR}"/*.manifest "release_files/${PREFIX}.manifest"
+          fi
+          if [ -f "${BIN_DIR}"/config.buildinfo ]; then
+            cp -vf "${BIN_DIR}"/config.buildinfo "release_files/${PREFIX}.config"
+          fi
+          
+          cd release_files
+          sha256sum * > SHA256SUMS.txt
+          echo "tag_name=${PREFIX}-$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_OUTPUT
+          ls -lh
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.organize.outputs.tag_name }}
+          path: release_files/
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        if: inputs.release == true && steps.compile.outputs.build_status == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.organize.outputs.tag_name }}
+          name: "${{ inputs.distro }} for TX9 Pro H616 (${{ steps.setup_source.outputs.repo_branch }} - ${{ steps.setup_source.outputs.pkg_mgr }})"
+          body: |
+            ## Automated Build for Allwinner H616 TV Box (TX9 Pro / X96Q DDR3L)
+            
+            - **Distribution:** `${{ inputs.distro }}`
+            - **Source Branch:** `${{ steps.setup_source.outputs.repo_branch }}`
+            - **Package Manager:** `${{ steps.setup_source.outputs.pkg_mgr }}` (`apk` on v25 / master, `opkg` on v24)
+            - **Kernel:** Linux 6.12.x
+            - **Default LAN IP:** `192.168.1.99` (Subnet: `255.255.255.0`, Gateway: `192.168.1.1`)
+            - **Default Wi-Fi SSID:** `TX9Pro-5G` / `ImmortalWrt` (Auto-enabled)
+            
+            ### Integrated Hardware Fixes:
+            1. **Ethernet (AC300 RMII PHY):** Mainline driver reset-probe fix + Port A regulator supplies in device tree. 100 Mbps Full Duplex verified.
+            2. **Wi-Fi (iComm SV6256P / SSV6006C):** Backport-aligned `kmod-ssv6x5x` supporting Linux 6.18 mac80211 backports and `apk` / `opkg` packaging.
+            
+            ### SHA-256 Checksums:
+            Inspect `SHA256SUMS.txt` attached below.
+          files: release_files/*

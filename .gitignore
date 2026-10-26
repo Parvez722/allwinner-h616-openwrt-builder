@@ -1,0 +1,14 @@
+# OpenWrt build folders
+openwrt/
+bin/
+build_dir/
+staging_dir/
+dl/
+feeds/
+tmp/
+*.orig
+*.rej
+*~
+.DS_Store
+Thumbs.db
+release_files/
