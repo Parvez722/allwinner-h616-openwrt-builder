@@ -1,0 +1,142 @@
+name: Build Armbian for Allwinner H616 (TX9 Pro / X96Q)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Kernel Branch'
+        required: true
+        default: 'edge'
+        type: choice
+        options:
+          - 'edge'
+          - 'current'
+      release:
+        description: 'Debian / Ubuntu Distribution'
+        required: true
+        default: 'bookworm'
+        type: choice
+        options:
+          - 'bookworm'
+          - 'noble'
+      build_desktop:
+        description: 'Build Desktop Environment (XFCE)'
+        required: false
+        default: false
+        type: boolean
+      publish_release:
+        description: 'Publish as GitHub Release'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Armbian (${{ inputs.release }} - ${{ inputs.branch }})
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Maximize Build Runner)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/lib/jvm /opt/ghc
+          sudo rm -rf /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune -a -f || true
+          df -h
+
+      - name: Install System Prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates qemu-user-static binfmt-support zstd xz-utils
+
+      - name: Clone Armbian Build System
+        run: |
+          git clone --depth 1 https://github.com/armbian/build armbian-build
+
+      - name: Inject Hardware Fixes & Userpatches
+        run: |
+          mkdir -p armbian-build/userpatches/overlay
+          mkdir -p armbian-build/userpatches/kernel/archive/sunxi-6.12
+          
+          # Copy customize script
+          cp -vf armbian/userpatches/customize-image.sh armbian-build/userpatches/
+          chmod +x armbian-build/userpatches/customize-image.sh
+          
+          # Copy hardware overlays (LAN DTB, SV6256P Wi-Fi deb, patched dwmac module)
+          if [ -d armbian/userpatches/overlay ]; then
+            cp -vrf armbian/userpatches/overlay/* armbian-build/userpatches/overlay/
+          fi
+          
+          # Copy kernel patches
+          if [ -d armbian/userpatches/kernel ]; then
+            cp -vrf armbian/userpatches/kernel/* armbian-build/userpatches/kernel/
+          fi
+
+      - name: Compile Armbian OS Image
+        run: |
+          cd armbian-build
+          
+          DESKTOP_ARG="no"
+          if [ "${{ inputs.build_desktop }}" = "true" ]; then
+            DESKTOP_ARG="yes"
+          fi
+          
+          sudo ./compile.sh \
+            ALLOW_ROOT=yes \
+            BOARD=x96q-ddr3-v5-1 \
+            BRANCH=${{ inputs.branch }} \
+            RELEASE=${{ inputs.release }} \
+            BUILD_MINIMAL=no \
+            BUILD_DESKTOP=${DESKTOP_ARG} \
+            COMPRESS_OUTPUTIMAGE=sha,xz \
+            KERNEL_CONFIGURE=no \
+            KERNEL_GIT=shallow
+
+      - name: Prepare Artifacts & Checksums
+        id: organize
+        run: |
+          mkdir -p release_files
+          cp -vf armbian-build/output/images/*.img.xz release_files/ 2>/dev/null || true
+          cp -vf armbian-build/output/images/*.img.xz.sha release_files/ 2>/dev/null || true
+          
+          TAG="Armbian-TX9Pro-H616-${{ inputs.release }}-${{ inputs.branch }}-$(date +'%Y.%m.%d-%H%M')"
+          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+          
+          cd release_files
+          sha256sum *.img.xz > SHA256SUMS.txt 2>/dev/null || true
+          ls -lh
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.organize.outputs.tag_name }}
+          path: release_files/
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        if: inputs.publish_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.organize.outputs.tag_name }}
+          name: "Armbian for TX9 Pro / X96Q (${{ inputs.release }} - Linux 6.12)"
+          body: |
+            ## Automated Armbian Build for Allwinner H616 (TX9 Pro / X96Q DDR3L)
+            
+            - **Distribution:** Debian `${{ inputs.release }}` (Server CLI)
+            - **Kernel Branch:** `${{ inputs.branch }}` (Linux 6.12.x)
+            - **Default User:** `root`
+            - **Default Password:** `1234` (Non-expiring, direct login enabled)
+            - **Pre-installed Binaries:** `network-manager` (`nmcli`, `nmtui`), `wireless-tools`, `wpasupplicant`, `ethtool`, `curl`, `wget`, `htop`, `nano`, `net-tools`
+            
+            ### Integrated Hardware Fixes:
+            1. **Ethernet (AC300 RMII PHY):** Patched `dwmac-sun8i` with Allwinner H616 EMAC1 `syscon` clock support (`0x50000`). No `NETDEV WATCHDOG` timeouts. 100 Mbps verified.
+            2. **Wi-Fi (iComm SV6256P / SSV6006C):** Backport-compatible `ssv6x5x` module and firmware installed. Auto-loads on boot.
+            3. **Device Tree:** Verified `sun50i-h313-x96-q-v5.1.dtb` with AXP313A PMIC power rails.
+          files: release_files/*
