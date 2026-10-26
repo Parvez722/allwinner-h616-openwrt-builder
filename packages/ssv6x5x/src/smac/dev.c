@@ -3366,10 +3366,10 @@ tx_mpdu:
         mutex_unlock(&sc->mutex);
         return 0;
     }
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-    static void ssv6200_stop(struct ieee80211_hw *hw) {
-#else
+#if defined(CPTCFG_BACKPORTED_MAC80211_MODULE) || (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0))
     static void ssv6200_stop(struct ieee80211_hw *hw, bool suspend) {
+#else
+    static void ssv6200_stop(struct ieee80211_hw *hw) {
 #endif
         struct ssv_softc *sc=hw->priv;
         u32 count=0;
@@ -3623,11 +3623,7 @@ tx_mpdu:
         }
         return assoc;
     }
-#if defined(CPTCFG_BACKPORTED_MAC80211_MODULE) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
-    static int ssv6200_config(struct ieee80211_hw *hw, int action, u32 changed) {
-#else
     static int ssv6200_config(struct ieee80211_hw *hw, u32 changed) {
-#endif
         struct ssv_softc *sc=hw->priv;
         int ret=0;
         HCI_WRITE_HW_CONFIG_ON(sc->sh);
@@ -4542,7 +4538,7 @@ out:
         .wake_tx_queue = ieee80211_handle_wake_tx_queue,
         //.wake_tx_queue = NULL,
         /* Use mac80211 emulation for single-channel hardware */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+#if defined(CPTCFG_BACKPORTED_MAC80211_MODULE) || (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0))
         .add_chanctx = ieee80211_emulate_add_chanctx,
         .remove_chanctx = ieee80211_emulate_remove_chanctx,
         .change_chanctx = ieee80211_emulate_change_chanctx,

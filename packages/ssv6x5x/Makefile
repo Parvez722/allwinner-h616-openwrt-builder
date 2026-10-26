@@ -25,7 +25,10 @@ NOSTDINC_FLAGS:= \
 	-I$(STAGING_DIR)/usr/include/mac80211 \
 	-I$(STAGING_DIR)/usr/include/mac80211/uapi \
 	-include backport/autoconf.h \
-	-include backport/backport.h
+	-include backport/backport.h \
+	-Wno-error=incompatible-pointer-types \
+	-Wno-incompatible-pointer-types \
+	-Wno-error
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)

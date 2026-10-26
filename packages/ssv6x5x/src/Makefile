@@ -26,6 +26,7 @@ BKP_CFG := $(shell cp "$(KBUILD_TOP)/$(KMODULE_NAME)-wifi.cfg" "$(KBUILD_TOP)/im
 MODDESTDIR = /lib/modules/$(shell uname -r)/kernel/drivers/net/wireless
 
 EXTRA_CFLAGS := -I$(KBUILD_TOP) -I$(KBUILD_TOP)/include
+EXTRA_CFLAGS += -Wno-error -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -Wno-error=attribute-warning
 
 # Completely disable ftrace for this out-of-tree module
 # This prevents "Misaligned patch-site" warnings on ARM64

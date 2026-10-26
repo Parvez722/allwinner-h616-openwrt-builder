@@ -54,6 +54,31 @@ uci set network.lan.gateway='192.168.1.1'
 uci set network.lan.dns='1.1.1.1 8.8.8.8'
 uci commit network
 
+# Make LuCI and SSH accessible from LAN and WAN both
+uci add firewall rule
+uci set firewall.@rule[-1].name='Allow-LuCI-WAN'
+uci set firewall.@rule[-1].src='wan'
+uci set firewall.@rule[-1].proto='tcp'
+uci set firewall.@rule[-1].dest_port='80 443'
+uci set firewall.@rule[-1].target='ACCEPT'
+
+uci add firewall rule
+uci set firewall.@rule[-1].name='Allow-SSH-WAN'
+uci set firewall.@rule[-1].src='wan'
+uci set firewall.@rule[-1].proto='tcp'
+uci set firewall.@rule[-1].dest_port='22'
+uci set firewall.@rule[-1].target='ACCEPT'
+uci commit firewall
+
+# Ensure uhttpd listens on all interfaces (LAN and WAN)
+uci set uhttpd.main.listen_http='0.0.0.0:80'
+uci commit uhttpd
+
+# Enable serial console root access & dropbear
+uci set dropbear.@dropbear[0].RootPasswordAuth='on' 2>/dev/null || true
+uci set dropbear.@dropbear[0].GatewayPorts='on' 2>/dev/null || true
+uci commit dropbear
+
 # Automatically detect and configure Wi-Fi on first boot
 if command -v wifi >/dev/null 2>&1; then
     wifi config
