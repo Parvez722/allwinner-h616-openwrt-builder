@@ -64,6 +64,7 @@ jobs:
         run: |
           mkdir -p armbian-build/userpatches/overlay
           mkdir -p armbian-build/userpatches/kernel/archive/sunxi-6.12
+          mkdir -p armbian-build/userpatches/kernel/archive/warpme-6.12
           
           # Copy customize script
           cp -vf armbian/userpatches/customize-image.sh armbian-build/userpatches/
@@ -74,9 +75,12 @@ jobs:
             cp -vrf armbian/userpatches/overlay/* armbian-build/userpatches/overlay/
           fi
           
-          # Copy kernel patches
+          # Copy kernel patches to both sunxi-6.12 and warpme-6.12
           if [ -d armbian/userpatches/kernel ]; then
             cp -vrf armbian/userpatches/kernel/* armbian-build/userpatches/kernel/
+            if [ -d armbian/userpatches/kernel/archive/sunxi-6.12 ]; then
+              cp -vrf armbian/userpatches/kernel/archive/sunxi-6.12/* armbian-build/userpatches/kernel/archive/warpme-6.12/ 2>/dev/null || true
+            fi
           fi
 
       - name: Compile Armbian OS Image

@@ -4,16 +4,24 @@ set -e
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${1:-.}"
 
-echo "=== [1/5] Injecting iComm SV6256P / SSV6X5X Wi-Fi Package ==="
+echo "=== [1/6] Injecting iComm SV6256P / SSV6X5X Wi-Fi Package ==="
 mkdir -p "${BUILD_DIR}/package/kernel"
-cp -r "${REPO_ROOT}/packages/ssv6x5x" "${BUILD_DIR}/package/kernel/"
+cp -rf "${REPO_ROOT}/packages/ssv6x5x" "${BUILD_DIR}/package/kernel/"
 
-echo "=== [2/5] Injecting Verified TX9 Pro / X96Q DDR3L Device Tree ==="
+echo "=== [2/6] Injecting Verified TX9 Pro / X96Q DDR3L Device Tree ==="
 DTS_DIR="${BUILD_DIR}/target/linux/sunxi/files/arch/arm64/boot/dts/allwinner"
 mkdir -p "${DTS_DIR}"
 cp -vf "${REPO_ROOT}/patches/sun50i-h313-x96-q-v5.1.dts" "${DTS_DIR}/sun50i-h313-x96-q-v5.1.dts"
 
-echo "=== [3/5] Registering Device/x96q in target/linux/sunxi/image/cortexa53.mk ==="
+echo "=== [3/6] Injecting Ethernet AC300 / dwmac-sun8i Second EMAC Clock Patch ==="
+for patch_dir in "${BUILD_DIR}/target/linux/sunxi/patches-6.12" "${BUILD_DIR}/target/linux/sunxi/patches-6.6"; do
+    if [ -d "${patch_dir}" ]; then
+        echo "Injecting 9785 dwmac patch into ${patch_dir}..."
+        cp -vf "${REPO_ROOT}/patches/9785-drv-net-stmmac-dwmac-sun8i-second-EMAC-clock-register.patch" "${patch_dir}/"
+    fi
+done
+
+echo "=== [4/6] Registering Device/x96q in target/linux/sunxi/image/cortexa53.mk ==="
 MK_FILE="${BUILD_DIR}/target/linux/sunxi/image/cortexa53.mk"
 if [ -f "${MK_FILE}" ]; then
     if ! grep -q "define Device/x96q" "${MK_FILE}"; then
@@ -33,7 +41,7 @@ EOF
     fi
 fi
 
-echo "=== [4/5] Injecting Out-Of-The-Box Network & Wi-Fi Defaults ==="
+echo "=== [5/6] Injecting Out-Of-The-Box Network & Wi-Fi Defaults ==="
 UCI_DIR="${BUILD_DIR}/package/base-files/files/etc/uci-defaults"
 mkdir -p "${UCI_DIR}"
 cat << 'EOF' > "${UCI_DIR}/99-tx9pro-custom-defaults"
@@ -59,4 +67,4 @@ exit 0
 EOF
 chmod +x "${UCI_DIR}/99-tx9pro-custom-defaults"
 
-echo "=== [5/5] Setup Complete! Ready to compile ==="
+echo "=== [6/6] Setup Complete! Ready to compile ==="
