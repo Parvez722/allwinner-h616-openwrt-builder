@@ -1,6 +1,14 @@
 name: Build OpenWrt / ImmortalWrt for Allwinner H616 (TX9 Pro / X96Q)
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'configs/**'
+      - 'patches/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - '.github/workflows/build-allwinner-h616.yml'
   repository_dispatch:
   workflow_dispatch:
     inputs:
@@ -16,11 +24,11 @@ on:
       branch:
         description: 'Branch / Release Version'
         required: true
-        default: 'master (v25 apk)'
+        default: 'openwrt-24.10 (v24 opkg)'
         type: choice
         options:
-          - 'master (v25 apk)'
           - 'openwrt-24.10 (v24 opkg)'
+          - 'master (v25 apk)'
       release:
         description: 'Publish as GitHub Release'
         required: false
@@ -32,7 +40,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ inputs.distro }} (${{ inputs.branch }})
+    name: Build ${{ inputs.distro || 'ImmortalWrt' }} (${{ inputs.branch || 'openwrt-24.10 (v24 opkg)' }})
     runs-on: ubuntu-24.04
 
     steps:
@@ -58,25 +66,28 @@ jobs:
       - name: Select Distribution Source & Branch
         id: setup_source
         run: |
-          if [ "${{ inputs.distro }}" = "ImmortalWrt" ]; then
+          DISTRO="${{ inputs.distro || 'ImmortalWrt' }}"
+          BRANCH="${{ inputs.branch || 'openwrt-24.10 (v24 opkg)' }}"
+          
+          if [ "${DISTRO}" = "ImmortalWrt" ]; then
             REPO_URL="https://github.com/immortalwrt/immortalwrt.git"
-            if [[ "${{ inputs.branch }}" == *"24"* ]]; then
+            if [[ "${BRANCH}" == *"24"* ]]; then
               REPO_BRANCH="openwrt-24.10"
               PKG_MGR="opkg"
             else
               REPO_BRANCH="master"
               PKG_MGR="apk"
             fi
-          elif [ "${{ inputs.distro }}" = "OpenWrt" ]; then
+          elif [ "${DISTRO}" = "OpenWrt" ]; then
             REPO_URL="https://github.com/openwrt/openwrt.git"
-            if [[ "${{ inputs.branch }}" == *"24"* ]]; then
+            if [[ "${BRANCH}" == *"24"* ]]; then
               REPO_BRANCH="openwrt-24.10"
               PKG_MGR="opkg"
             else
               REPO_BRANCH="main"
               PKG_MGR="apk"
             fi
-          elif [ "${{ inputs.distro }}" = "KWRT" ]; then
+          elif [ "${DISTRO}" = "KWRT" ]; then
             REPO_URL="https://github.com/coolsnowwolf/lede.git"
             REPO_BRANCH="master"
             PKG_MGR="opkg"
@@ -85,7 +96,8 @@ jobs:
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "repo_branch=${REPO_BRANCH}" >> $GITHUB_OUTPUT
           echo "pkg_mgr=${PKG_MGR}" >> $GITHUB_OUTPUT
-          echo "Using Distro: ${{ inputs.distro }} | URL: ${REPO_URL} | Branch: ${REPO_BRANCH} | Package Manager: ${PKG_MGR}"
+          echo "distro=${DISTRO}" >> $GITHUB_OUTPUT
+          echo "Using Distro: ${DISTRO} | URL: ${REPO_URL} | Branch: ${REPO_BRANCH} | Package Manager: ${PKG_MGR}"
 
       - name: Clone Source Code
         run: |
@@ -130,7 +142,7 @@ jobs:
           mkdir -p release_files
           BIN_DIR="openwrt/bin/targets/sunxi/cortexa53"
           
-          PREFIX="${{ inputs.distro }}-TX9Pro-H616-${{ steps.setup_source.outputs.pkg_mgr }}"
+          PREFIX="${{ steps.setup_source.outputs.distro }}-TX9Pro-H616-${{ steps.setup_source.outputs.pkg_mgr }}"
           
           # Copy SD card images
           if [ -f "${BIN_DIR}"/*-ext4-sdcard.img.gz ]; then
@@ -159,24 +171,29 @@ jobs:
           retention-days: 90
 
       - name: Publish GitHub Release
-        if: inputs.release == true && steps.compile.outputs.build_status == 'success'
+        if: (inputs.release != false) && steps.compile.outputs.build_status == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.organize.outputs.tag_name }}
-          name: "${{ inputs.distro }} for TX9 Pro H616 (${{ steps.setup_source.outputs.repo_branch }} - ${{ steps.setup_source.outputs.pkg_mgr }})"
+          name: "${{ steps.setup_source.outputs.distro }} for TX9 Pro H616 (${{ steps.setup_source.outputs.repo_branch }} - ${{ steps.setup_source.outputs.pkg_mgr }})"
           body: |
             ## Automated Build for Allwinner H616 TV Box (TX9 Pro / X96Q DDR3L)
             
-            - **Distribution:** `${{ inputs.distro }}`
+            - **Distribution:** `${{ steps.setup_source.outputs.distro }}`
             - **Source Branch:** `${{ steps.setup_source.outputs.repo_branch }}`
-            - **Package Manager:** `${{ steps.setup_source.outputs.pkg_mgr }}` (`apk` on v25 / master, `opkg` on v24)
+            - **Package Manager:** `${{ steps.setup_source.outputs.pkg_mgr }}` (`opkg` on v24, `apk` on v25 / master)
             - **Kernel:** Linux 6.12.x
-            - **Default LAN IP:** `192.168.1.99` (Subnet: `255.255.255.0`, Gateway: `192.168.1.1`)
-            - **Default Wi-Fi SSID:** `TX9Pro-5G` / `ImmortalWrt` (Auto-enabled)
+            - **Built-in Ethernet:** `eth0` configured as **WAN** (automatic DHCP client from upstream router)
+            - **LAN Subnet:** `192.168.8.1/24` (Wi-Fi AP `TX9Pro-5G`, USB Tethering & USB Ethernet adapters)
+            - **Access:** LuCI (WebUI) and SSH (port 22) fully accessible from both WAN and LAN
+            - **Theme:** Argon theme (white / light mode) pre-configured as default
             
-            ### Integrated Hardware Fixes:
-            1. **Ethernet (AC300 RMII PHY):** Mainline driver reset-probe fix + Port A regulator supplies in device tree. 100 Mbps Full Duplex verified.
-            2. **Wi-Fi (iComm SV6256P / SSV6006C):** Backport-aligned `kmod-ssv6x5x` supporting Linux 6.18 mac80211 backports and `apk` / `opkg` packaging.
+            ### Integrated Packages & Hardware Support:
+            1. **USB Tethering:** Android RNDIS, Apple iOS `ipheth` + `usbmuxd`, Huawei CDC NCM, QMI WWAN.
+            2. **USB Ethernet:** Realtek RTL8152/RTL8153, ASIX AX88172/178/179, SR9700, DM9601.
+            3. **USB Storage:** Full filesystem support (`ext4`, `vfat`, `exfat`, `ntfs3`, `f2fs`) + `block-mount`, `e2fsprogs`, `dosfstools`.
+            4. **Ethernet (AC300 RMII PHY):** Mainline driver reset-probe fix + Port A regulator supplies in device tree. 100 Mbps Full Duplex verified.
+            5. **Wi-Fi (iComm SV6256P / SSV6006C):** Backport-aligned `kmod-ssv6x5x` supporting Linux 6.12/6.18 mac80211 backports.
             
             ### SHA-256 Checksums:
             Inspect `SHA256SUMS.txt` attached below.
