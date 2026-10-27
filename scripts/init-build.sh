@@ -29,6 +29,7 @@ for patch_dir in "${BUILD_DIR}/target/linux/sunxi/patches-6.12" "${BUILD_DIR}/ta
 done
 
 echo "=== [4/8] Injecting U-Boot Patches for X96Q / TX9 Pro DDR3 ==="
+python3 -m pip install --break-system-packages "setuptools<70" 2>/dev/null || python3 -m pip install "setuptools<70" 2>/dev/null || true
 UBOOT_PATCH_DIR="${BUILD_DIR}/package/boot/uboot-sunxi/patches"
 mkdir -p "${UBOOT_PATCH_DIR}"
 for p in "${REPO_ROOT}/patches"/163* "${REPO_ROOT}/patches"/290* "${REPO_ROOT}/patches"/300* "${REPO_ROOT}/patches"/301*; do
@@ -40,9 +41,12 @@ done
 echo "=== [5/8] Registering U-Boot/x96q in package/boot/uboot-sunxi/Makefile ==="
 UBOOT_MK="${BUILD_DIR}/package/boot/uboot-sunxi/Makefile"
 if [ -f "${UBOOT_MK}" ]; then
-    if ! grep -q "define U-Boot/x96q" "${UBOOT_MK}"; then
-        cat << 'EOF' >> "${UBOOT_MK}"
-
+    python3 - << PYEOF
+mk = "${UBOOT_MK}"
+with open(mk, 'r') as f:
+    c = f.read()
+if "define U-Boot/x96q" not in c:
+    block = """
 define U-Boot/x96q
   BUILD_SUBTARGET:=cortexa53
   NAME:=TX9 Pro / X96Q DDR3
@@ -54,11 +58,18 @@ define U-Boot/x96q
 endef
 
 UBOOT_TARGETS += x96q
-EOF
-        echo "Successfully registered U-Boot/x96q in uboot-sunxi/Makefile"
-    else
-        echo "U-Boot/x96q already registered in uboot-sunxi/Makefile"
-    fi
+"""
+    target = "\$(eval \$(call BuildPackage/U-Boot))"
+    if target in c:
+        c = c.replace(target, block + "\\n" + target)
+        with open(mk, 'w') as f:
+            f.write(c)
+        print("Successfully registered U-Boot/x96q before BuildPackage/U-Boot")
+    else:
+        print("Target BuildPackage/U-Boot not found")
+else:
+    print("U-Boot/x96q already registered")
+PYEOF
 fi
 
 echo "=== [6/8] Registering Device/x96q in target/linux/sunxi/image/cortexa53.mk ==="

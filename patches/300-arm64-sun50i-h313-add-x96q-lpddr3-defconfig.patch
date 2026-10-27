@@ -16,7 +16,7 @@ diff --git a/configs/x96q_lpddr3_defconfig b/configs/x96q_lpddr3_defconfig
 @@ -0,0 +1,34 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_SUNXI=y
-+CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h313-x96q-lpddr3"
++CONFIG_DEFAULT_DEVICE_TREE="sun50i-h313-x96q-lpddr3"
 +CONFIG_SPL=y
 +CONFIG_SUNXI_DRAM_H616_LPDDR3=y
 +CONFIG_DRAM_CLK=600
@@ -48,11 +48,11 @@ diff --git a/configs/x96q_lpddr3_defconfig b/configs/x96q_lpddr3_defconfig
 +CONFIG_SUPPORT_EMMC_BOOT=y
 +CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x40
 +CONFIG_MMC_SUNXI_SLOT_EXTRA=2
-diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h313-x96q-lpddr3.dts b/dts/upstream/src/arm64/allwinner/sun50i-h313-x96q-lpddr3.dts
+diff --git a/arch/arm/dts/sun50i-h313-x96q-lpddr3.dts b/arch/arm/dts/sun50i-h313-x96q-lpddr3.dts
 new file mode 100644
 index 000000000..306157b84
 --- /dev/null
-+++ b/dts/upstream/src/arm64/allwinner/sun50i-h313-x96q-lpddr3.dts
++++ b/arch/arm/dts/sun50i-h313-x96q-lpddr3.dts
 @@ -0,0 +1,191 @@
 +// SPDX-License-Identifier: (GPL-2.0+ or MIT)
 +/*

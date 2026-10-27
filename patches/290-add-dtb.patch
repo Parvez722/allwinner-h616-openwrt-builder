@@ -1,11 +1,11 @@
-diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile                                                                                                                                                                             
---- a/arch/arm/dts/Makefile                                                                                                                                                                                                            
+--- a/arch/arm/dts/Makefile
 +++ b/arch/arm/dts/Makefile
-@@ -727,6 +727,7 @@
- 	sun50i-h6-tanix-tx6-mini.dtb
+@@ -836,6 +836,8 @@
+ dtb-$(CONFIG_MACH_SUN50I_H616) += \
+ 	sun50i-h616-orangepi-zero2.dtb \
+ 	sun50i-h618-orangepi-zero3.dtb \
++	sun50i-h313-x96q-ddr3-v5.1.dtb \
++	sun50i-h313-x96q-lpddr3.dtb \
+ 	sun50i-h616-x96-mate.dtb
  dtb-$(CONFIG_MACH_SUN50I) += \
  	sun50i-a64-amarula-relic.dtb \
-+	sun50i-h313-x96q-lpddr3.dtb \
- 	sun50i-a64-bananapi-m64.dtb \
- 	sun50i-a64-nanopi-a64.dtb \
- 	sun50i-a64-oceanic-5205-5inmfd.dtb \
