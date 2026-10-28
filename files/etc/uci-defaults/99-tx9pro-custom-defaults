@@ -1,0 +1,109 @@
+#!/bin/sh
+
+# 1. NETWORK INTERFACE CONFIGURATION
+# Default built-in eth0 will use as LAN on 192.168.15.1
+uci -q delete network.lan.device
+uci -q delete network.@device[0].ports
+uci set network.lan=interface
+uci set network.lan.device='eth0'
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr='192.168.15.1'
+uci set network.lan.netmask='255.255.255.0'
+
+# Default USB eth will use as WAN (eth1)
+uci set network.wan=interface
+uci set network.wan.device='eth1'
+uci set network.wan.proto='dhcp'
+
+# USB Tethering fallback interface (usb0, rndis0, ncm0)
+uci set network.wan_usb=interface
+uci set network.wan_usb.device='usb0'
+uci set network.wan_usb.proto='dhcp'
+uci commit network
+
+# Adjust DHCP pool for 192.168.15.x subnet
+uci set dhcp.lan.start='100'
+uci set dhcp.lan.limit='150'
+uci set dhcp.lan.leasetime='12h'
+uci commit dhcp
+
+# 2. FIREWALL & HARDWARE NAT PRE-ENABLED
+uci set firewall.@defaults[0].flow_offloading='1'
+uci set firewall.@defaults[0].flow_offloading_hw='1'
+uci set firewall.@defaults[0].fullcone='1'
+uci set firewall.@defaults[0].bcm_fullcone='1' 2>/dev/null || true
+
+# Add wan_usb to WAN firewall zone
+uci -q add_list firewall.@zone[1].network='wan_usb' 2>/dev/null || true
+
+# Open ports on WAN & LAN (SSH & LuCI)
+uci set firewall.@zone[1].input='ACCEPT'
+uci set firewall.@zone[1].forward='ACCEPT'
+uci set firewall.@zone[0].input='ACCEPT'
+uci set firewall.@zone[0].forward='ACCEPT'
+
+uci -q delete firewall.Allow_LuCI_WAN
+uci set firewall.Allow_LuCI_WAN=rule
+uci set firewall.Allow_LuCI_WAN.name='Allow-LuCI-WAN'
+uci set firewall.Allow_LuCI_WAN.src='wan'
+uci set firewall.Allow_LuCI_WAN.proto='tcp'
+uci set firewall.Allow_LuCI_WAN.dest_port='80 443'
+uci set firewall.Allow_LuCI_WAN.target='ACCEPT'
+
+uci -q delete firewall.Allow_SSH_WAN
+uci set firewall.Allow_SSH_WAN=rule
+uci set firewall.Allow_SSH_WAN.name='Allow-SSH-WAN'
+uci set firewall.Allow_SSH_WAN.src='wan'
+uci set firewall.Allow_SSH_WAN.proto='tcp'
+uci set firewall.Allow_SSH_WAN.dest_port='22'
+uci set firewall.Allow_SSH_WAN.target='ACCEPT'
+uci commit firewall
+
+# 3. WEB UI & SSH CONFIGURATION
+uci set uhttpd.main.listen_http='0.0.0.0:80'
+uci -q add_list uhttpd.main.listen_http='[::]:80'
+uci -q set uhttpd.main.listen_https='0.0.0.0:443'
+uci -q add_list uhttpd.main.listen_https='[::]:443'
+uci commit uhttpd
+
+uci set dropbear.@dropbear[0].RootPasswordAuth='on' 2>/dev/null || true
+uci set dropbear.@dropbear[0].PasswordAuth='on' 2>/dev/null || true
+uci set dropbear.@dropbear[0].GatewayPorts='on' 2>/dev/null || true
+uci commit dropbear
+
+# 4. ARGON THEME PRE-INSTALLED & WHITE MODE
+uci set luci.main.mediaurlbase='/luci-static/argon'
+uci commit luci
+
+uci -q set argon.@global[0].mode='light'
+uci -q set argon.@global[0].dark='false'
+uci -q commit argon 2>/dev/null || true
+
+# 5. WI-FI PRECONFIG (5GHz, Channel 161, Bangladesh Region, Max Power/Throughput)
+if command -v wifi >/dev/null 2>&1; then
+    wifi config
+    uci set wireless.@wifi-device[0].disabled='0'
+    uci set wireless.@wifi-device[0].country='BD'
+    uci set wireless.@wifi-device[0].channel='161'
+    uci set wireless.@wifi-device[0].band='5g'
+    uci set wireless.@wifi-device[0].htmode='VHT80' 2>/dev/null || uci set wireless.@wifi-device[0].htmode='VHT40'
+    uci set wireless.@wifi-device[0].txpower='23'
+    uci set wireless.@wifi-device[0].cell_density='0'
+
+    uci set wireless.@wifi-iface[0].disabled='0'
+    uci set wireless.@wifi-iface[0].network='lan'
+    uci set wireless.@wifi-iface[0].mode='ap'
+    uci set wireless.@wifi-iface[0].ssid='TX9Pro-5G'
+    uci set wireless.@wifi-iface[0].encryption='none'
+    uci commit wireless
+fi
+
+# 6. STORAGE AUTOMOUNT PRE-CONFIGURATION
+uci set fstab.@global[0].anon_swap='0'
+uci set fstab.@global[0].anon_mount='1'
+uci set fstab.@global[0].auto_swap='0'
+uci set fstab.@global[0].auto_mount='1'
+uci set fstab.@global[0].check_fs='1'
+uci commit fstab
+
+exit 0

@@ -12,3 +12,6 @@ tmp/
 .DS_Store
 Thumbs.db
 release_files/
+output/
+
+output/

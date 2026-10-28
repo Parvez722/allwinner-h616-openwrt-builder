@@ -1,0 +1,23 @@
+#!/bin/sh
+case "$ACTION" in
+    add)
+        [ -n "$DEVNAME" ] || exit 0
+        case "$DEVNAME" in
+            sd[a-z][0-9]|mmcblk[0-9]p[0-9]|nvme[0-9]n[0-9]p[0-9])
+                MOUNT_POINT="/mnt/$DEVNAME"
+                mkdir -p "$MOUNT_POINT"
+                mount -o rw,noatime "/dev/$DEVNAME" "$MOUNT_POINT" 2>/dev/null || \
+                mount -t ntfs3 -o rw,noatime,iocharset=utf8 "/dev/$DEVNAME" "$MOUNT_POINT" 2>/dev/null || \
+                mount "/dev/$DEVNAME" "$MOUNT_POINT" 2>/dev/null
+                ;;
+        esac
+        ;;
+    remove)
+        [ -n "$DEVNAME" ] || exit 0
+        MOUNT_POINT="/mnt/$DEVNAME"
+        if grep -qs "$MOUNT_POINT" /proc/mounts; then
+            umount -l "$MOUNT_POINT"
+            rmdir "$MOUNT_POINT" 2>/dev/null
+        fi
+        ;;
+esac
