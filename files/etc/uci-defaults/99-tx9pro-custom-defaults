@@ -32,11 +32,14 @@ uci set dhcp.lan.interface='lan'
 uci set dhcp.lan.start='100'
 uci set dhcp.lan.limit='150'
 uci set dhcp.lan.leasetime='12h'
+uci -q delete dhcp.lan.dhcp_option
+uci add_list dhcp.lan.dhcp_option='3,192.168.15.1'
+uci add_list dhcp.lan.dhcp_option='6,192.168.15.1'
 uci commit dhcp
 
-# 2. FIREWALL & HARDWARE NAT PRE-ENABLED
+# 2. FIREWALL & SOFTWARE NAT OFFLOADING
 uci set firewall.@defaults[0].flow_offloading='1'
-uci set firewall.@defaults[0].flow_offloading_hw='1'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
 uci set firewall.@defaults[0].fullcone='1'
 uci set firewall.@defaults[0].bcm_fullcone='1' 2>/dev/null || true
 
@@ -87,14 +90,14 @@ uci -q set argon.@global[0].mode='light'
 uci -q set argon.@global[0].dark='false'
 uci -q commit argon 2>/dev/null || true
 
-# 5. WI-FI PRECONFIG (5GHz, Channel 161, Bangladesh Region, 20 dBm Power)
+# 5. WI-FI PRECONFIG (5GHz, Channel 161, Bangladesh Region, HT40 Mode, 20 dBm Power)
 if command -v wifi >/dev/null 2>&1; then
     wifi config
     uci set wireless.@wifi-device[0].disabled='0'
     uci set wireless.@wifi-device[0].country='BD'
     uci set wireless.@wifi-device[0].channel='161'
     uci set wireless.@wifi-device[0].band='5g'
-    uci set wireless.@wifi-device[0].htmode='VHT80' 2>/dev/null || uci set wireless.@wifi-device[0].htmode='VHT40'
+    uci set wireless.@wifi-device[0].htmode='HT40'
     uci set wireless.@wifi-device[0].txpower='20'
     uci set wireless.@wifi-device[0].cell_density='0'
 
@@ -104,9 +107,18 @@ if command -v wifi >/dev/null 2>&1; then
     uci set wireless.@wifi-iface[0].ssid='TX9Pro-5G'
     uci set wireless.@wifi-iface[0].encryption='none'
     uci commit wireless
+    iw reg set BD 2>/dev/null || true
 fi
 
-# 6. STORAGE AUTOMOUNT PRE-CONFIGURATION
+# 6. SYSTEM & SYSCTL ROUTING / PROXY ARP FIXES
+mkdir -p /etc/sysctl.d
+cat << 'EOF' > /etc/sysctl.d/99-custom.conf
+net.ipv4.conf.all.proxy_arp=1
+net.ipv4.conf.default.proxy_arp=1
+EOF
+sysctl -p /etc/sysctl.d/99-custom.conf 2>/dev/null || true
+
+# 7. STORAGE AUTOMOUNT PRE-CONFIGURATION
 uci set fstab.@global[0].anon_swap='0'
 uci set fstab.@global[0].anon_mount='1'
 uci set fstab.@global[0].auto_swap='0'
