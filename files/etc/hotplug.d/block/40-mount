@@ -3,7 +3,7 @@ case "$ACTION" in
     add)
         [ -n "$DEVNAME" ] || exit 0
         case "$DEVNAME" in
-            sd[a-z][0-9]|mmcblk[0-9]p[0-9]|nvme[0-9]n[0-9]p[0-9])
+            sd[a-z][0-9]|nvme[0-9]n[0-9]p[0-9])
                 MOUNT_POINT="/mnt/$DEVNAME"
                 mkdir -p "$MOUNT_POINT"
                 mount -o rw,noatime "/dev/$DEVNAME" "$MOUNT_POINT" 2>/dev/null || \

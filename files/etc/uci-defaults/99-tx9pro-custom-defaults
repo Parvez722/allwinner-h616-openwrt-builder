@@ -1,11 +1,16 @@
 #!/bin/sh
 
 # 1. NETWORK INTERFACE CONFIGURATION
-# Default built-in eth0 will use as LAN on 192.168.15.1
-uci -q delete network.lan.device
-uci -q delete network.@device[0].ports
+# Configure br-lan bridge containing built-in eth0
+uci -q delete network.@device[0]
+uci set network.br_lan=device
+uci set network.br_lan.name='br-lan'
+uci set network.br_lan.type='bridge'
+uci add_list network.br_lan.ports='eth0'
+
+# LAN interface on br-lan (192.168.15.1)
 uci set network.lan=interface
-uci set network.lan.device='eth0'
+uci set network.lan.device='br-lan'
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='192.168.15.1'
 uci set network.lan.netmask='255.255.255.0'
@@ -22,6 +27,8 @@ uci set network.wan_usb.proto='dhcp'
 uci commit network
 
 # Adjust DHCP pool for 192.168.15.x subnet
+uci -q delete dhcp.lan.ignore
+uci set dhcp.lan.interface='lan'
 uci set dhcp.lan.start='100'
 uci set dhcp.lan.limit='150'
 uci set dhcp.lan.leasetime='12h'
@@ -66,6 +73,7 @@ uci -q set uhttpd.main.listen_https='0.0.0.0:443'
 uci -q add_list uhttpd.main.listen_https='[::]:443'
 uci commit uhttpd
 
+uci -q delete dropbear.@dropbear[0].Interface
 uci set dropbear.@dropbear[0].RootPasswordAuth='on' 2>/dev/null || true
 uci set dropbear.@dropbear[0].PasswordAuth='on' 2>/dev/null || true
 uci set dropbear.@dropbear[0].GatewayPorts='on' 2>/dev/null || true
@@ -79,7 +87,7 @@ uci -q set argon.@global[0].mode='light'
 uci -q set argon.@global[0].dark='false'
 uci -q commit argon 2>/dev/null || true
 
-# 5. WI-FI PRECONFIG (5GHz, Channel 161, Bangladesh Region, Max Power/Throughput)
+# 5. WI-FI PRECONFIG (5GHz, Channel 161, Bangladesh Region, 20 dBm Power)
 if command -v wifi >/dev/null 2>&1; then
     wifi config
     uci set wireless.@wifi-device[0].disabled='0'
@@ -87,7 +95,7 @@ if command -v wifi >/dev/null 2>&1; then
     uci set wireless.@wifi-device[0].channel='161'
     uci set wireless.@wifi-device[0].band='5g'
     uci set wireless.@wifi-device[0].htmode='VHT80' 2>/dev/null || uci set wireless.@wifi-device[0].htmode='VHT40'
-    uci set wireless.@wifi-device[0].txpower='23'
+    uci set wireless.@wifi-device[0].txpower='20'
     uci set wireless.@wifi-device[0].cell_density='0'
 
     uci set wireless.@wifi-iface[0].disabled='0'
